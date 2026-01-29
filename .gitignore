@@ -55,3 +55,6 @@ documents/
 
 
 discarded.qmd
+data/dataLongRaw.csv
+data/dataLong.csv
+data/dataAllLong.csv
