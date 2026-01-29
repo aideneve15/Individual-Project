@@ -47,6 +47,7 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+<<<<<<< HEAD
 
 
 msc/
@@ -58,3 +59,5 @@ discarded.qmd
 data/dataLongRaw.csv
 data/dataLong.csv
 data/dataAllLong.csv
+=======
+>>>>>>> 859b4eadf3a39415a03421b6e4c6ddda7df68c2b
