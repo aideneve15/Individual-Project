@@ -1,0 +1,160 @@
+library(tidyverse) # for data manipulation and visualization
+library(patchwork) # for combining plots
+library(here) # for file path management
+library(arrow) # for saving dataframes
+library(ptw)
+
+# Set the path to your folder
+folder_path <- here::here("Data1")
+
+
+# List all files in the folder
+files <- list.files(path = folder_path, full.names = TRUE)
+
+all_data_long_1 <- tibble()
+
+# iterate through files
+for(i in 1:length(files)) {
+  
+  # Read the CSV file
+  data <- read_csv(file = files[i], col_names = c("time", "intensity")) |> 
+    mutate(file = files[i])
+  
+  all_data_long_1 <- all_data_long_1 |> 
+    bind_rows(
+      data
+    )
+}
+
+
+Long1 <- all_data_long_1 |> 
+  mutate(basename = basename(file)) |> 
+  select(-file) |> 
+  separate_wider_delim(
+    basename,
+    delim = "_",
+    names = c("enzyme", "instrument", "species", "time_point", "sample")
+  ) |> 
+  filter(time > 0.75 & time < 10) |> 
+  mutate(
+  sample = str_extract(sample, "^[^.]+")
+)
+
+
+folder_path <- here::here("Data2")
+
+
+# List all files in the folder
+files <- list.files(path = folder_path, full.names = TRUE)
+
+all_data_long_2 <- tibble()
+
+# iterate through files
+for(i in 1:length(files)) {
+  
+  # Read the CSV file
+  data <- read_csv(file = files[i], col_names = c("time", "intensity")) |> 
+    mutate(file = files[i])
+  
+  all_data_long_2 <- all_data_long_2 |> 
+    bind_rows(
+      data
+    )
+}
+
+
+Long2 <- all_data_long_2 |> 
+  mutate(basename = basename(file)) |> 
+  select(-file) |> 
+  separate_wider_delim(
+    basename,
+    delim = "_",
+    names = c("enzyme", "instrument", "species", "time_point", "sample")
+  ) |> 
+  filter(time > 0.75 & time < 10) |> 
+  mutate(
+  sample = str_extract(sample, "^[^.]+")
+)
+
+
+combinedLong <- bind_rows(Long2, Long1)
+
+combinedLong |> 
+  filter(instrument == "DAD") |> 
+  group_by(species) |> 
+  ggplot(aes(x=time, y = intensity, color = time_point))+
+  geom_point()+
+  facet_wrap(~species)
+
+
+all_times <- combinedLong |> 
+  select(time) |> 
+  distinct() |> 
+  arrange(time)
+
+allLong <- combinedLong |> 
+  group_by(enzyme, sample, instrument, species, time_point) |>
+  group_modify(~ {
+    interp_results <- approx(x = .x$time, y = .x$intensity, xout = all_times$time)
+    tibble(
+      time = interp_results$x,
+      intensity = interp_results$y
+    )
+  }) |> 
+  ungroup()
+
+
+na_times <- combinedLong |> 
+  filter(is.na(intensity)) |> 
+  select(time) |> 
+  distinct() |> 
+  arrange(time)
+
+combinedLong <- combinedLong |> 
+  filter(! time %in% na_times$time) |> 
+  mutate(time_point = as.character(time_point))
+
+combinedWide <- combinedLong |> 
+  mutate(time_point = as.character(time_point)) |> 
+  pivot_wider(
+    names_from = time,
+    values_from = intensity
+  ) |> 
+  filter(instrument == "DAD")
+
+
+metadata <- combinedWide |> 
+  select(!where(is.numeric))
+
+dataPCA <- combinedWide |> 
+  filter(instrument == 'DAD')|>
+  select(where(is.numeric)) 
+
+pca_res = prcomp(
+  dataPCA,
+  center = TRUE,
+  scale. = TRUE
+)
+
+pca_scores = as.data.frame(pca_res$x)
+
+metadata <- metadata[rownames(pca_scores), , drop = FALSE] #align the metadata rows
+
+pca_df <- bind_cols(metadata, pca_scores) |> 
+  mutate(time_point = factor(time_point, levels = c("0", "2", "5", "15", "30")))
+
+loadings <- as.data.frame(pca_res$rotation)
+
+variance <- tibble(
+  PC = paste0("PC", seq_along(pca_res$sdev)),
+  variance = pca_res$sdev^2 / sum(pca_res$sdev^2)
+)
+
+ggplot(pca_df, aes(x = PC1, y = PC2))+
+  geom_point(aes(color = time_point))+
+  theme_minimal()
+
+
+
+# write_csv(combinedLong, file = 'data/dataAllLong.csv')
+# write_csv(combinedWide, file = 'data/dataAllWide.csv')
